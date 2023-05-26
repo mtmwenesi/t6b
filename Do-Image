@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# Set variables
+CONTAINER_NAME="my-container"
+BACKUP_NAME="${CONTAINER_NAME}-$(date +%Y%m%d_%H%M%S)"
+BACKUP_DIR="/backups"
+LOCAL_DIR="${BACKUP_DIR}/local"
+S3_BUCKET="my-s3-bucket"
+GOOGLE_DRIVE_DIR="/Google Drive/backups"
+FREQUENCY="$1"
+SCHEDULE="$2"
+
+# Create backup directory if it doesn't exist
+mkdir -p ${LOCAL_DIR}
+
+# Backup Docker container to local directory
+docker commit ${CONTAINER_NAME} ${BACKUP_NAME}
+docker save ${BACKUP_NAME} | gzip > ${LOCAL_DIR}/${BACKUP_NAME}.tar.gz
+
+# Backup to S3
+if [ "$3" == "s3" ]; then
+  aws s3 cp ${LOCAL_DIR}/${BACKUP_NAME}.tar.gz s3://${S3_BUCKET}/${BACKUP_NAME}.tar.gz
+fi
+
+# Backup to Google Drive
+if [ "$3" == "google" ]; then
+  rclone copy ${LOCAL_DIR}/${BACKUP_NAME}.tar.gz "google:${GOOGLE_DRIVE_DIR}/${BACKUP_NAME}.tar.gz"
+fi
+
+# Schedule backups
+if [ "${FREQUENCY}" == "hourly" ]; then
+  CRON="0 * * * *"
+elif [ "${FREQUENCY}" == "daily" ]; then
+  CRON="0 0 * * *"
+elif [ "${FREQUENCY}" == "weekly" ]; then
+  CRON="0 0 * * 0"
+elif [ "${FREQUENCY}" == "monthly" ]; then
+  CRON="0 0 1 * *"
+elif [ "${FREQUENCY}" == "yearly" ]; then
+  CRON="0 0 1 1 *"
+else
+  echo "Invalid frequency. Valid options are hourly, daily, weekly, monthly, or yearly."
+  exit 1
+fi
+
+if [ "${SCHEDULE}" == "local" ]; then
+  echo "${CRON} root /usr/local/bin/backup.sh ${FREQUENCY} local" > /etc/cron.d/backup
+elif [ "${SCHEDULE}" == "s3" ]; then
+  echo "${CRON} root /usr/local/bin/backup.sh ${FREQUENCY} s3" > /etc/cron.d/backup
+elif [ "${SCHEDULE}" == "google" ]; then
+  echo "${CRON} root /usr/local/bin/backup.sh ${FREQUENCY} google" > /etc/cron.d/backup
+else
+  echo "Invalid schedule. Valid options are local, s3, or google."
+  exit 1
+fi
