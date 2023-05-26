@@ -1,0 +1,38 @@
+const express = require('express');
+const bodyParser = require('body-parser');
+const { exec } = require('child_process');
+
+const app = express();
+const PORT = 3000;
+
+// Set up body parser to handle form data
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Set up static directory for serving HTML/CSS/JS files
+app.use(express.static('public'));
+
+// Define route for handling form submissions
+app.post('/backup', (req, res) => {
+  const { frequency, location, containers } = req.body;
+
+  // Create command to execute backup script with selected options
+  const command = `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/backups:/backups backup:latest ${frequency} ${location} ${containers.join(' ')}`;
+
+  // Execute command in child process and return output to client
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error(error);
+      return res.status(500).send(error.message);
+    }
+
+    console.log(stdout);
+    console.error(stderr);
+
+    return res.status(200).send('Backup completed successfully.');
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}.`);
+});
